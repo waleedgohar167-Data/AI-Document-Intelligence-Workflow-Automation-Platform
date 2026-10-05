@@ -8,6 +8,7 @@ from app.core.database import SessionLocal, ProcessingJob, DocumentRecord, Audit
 from app.services.parser import extract_pdf, extract_docx
 from app.schemas.classification import NormalizedDocument
 from app.services.classifier import classify_document, CONFIDENCE_THRESHOLD
+from app.services.extractor import extract_structured_data
 
 STORAGE_PARSED_DIR = "storage/parsed"
 os.makedirs(STORAGE_PARSED_DIR, exist_ok=True)
@@ -50,7 +51,7 @@ def claim_next_job(db):
     return job
 
 def persist_result(doc_id: str, data: dict):
-    """Point 9 & 10: Persist output idemptotently to disk for Day 4"""
+    """Point 9 & 10: Persist output idemptotently to disk"""
     file_path = os.path.join(STORAGE_PARSED_DIR, f"{doc_id}.json")
     with open(file_path, "w") as f:
         json.dump(data, f, indent=2)
@@ -68,7 +69,7 @@ def process_job(db, job):
         file_path = doc_record.storage_reference
         file_type = doc_record.file_type
         
-        # Point 12: Accurate sequence of events
+        # 1. PARSING STAGE
         if "wordprocessingml" in file_type:
             result = extract_docx(file_path, doc_id)
         else:
@@ -80,18 +81,16 @@ def process_job(db, job):
             if result["extraction_method"] in ["ocr", "mixed"]:
                 log_audit(db, doc_id, "OCR_COMPLETED")
 
-        # Empty result failure check (Point 11)
         if not result["blocks"]:
             raise ValueError("Extraction returned empty blocks.")
 
         persist_result(doc_id, result)
         log_audit(db, doc_id, "PARSING_COMPLETED", f"Method: {result['extraction_method']}")
         
-        # --- NEW DAY 4 CLASSIFICATION STAGE ---
+        # 2. CLASSIFICATION STAGE
         current_stage = "CLASSIFICATION"
         log_audit(db, doc_id, "CLASSIFICATION_STARTED")
         
-        # Validate through Pydantic
         normalized_doc = NormalizedDocument(**result)
         classification = classify_document(normalized_doc)
         
@@ -106,25 +105,44 @@ def process_job(db, job):
             final_status = JobStatus.CLASSIFIED.value
             log_audit(db, doc_id, "DOCUMENT_CLASSIFIED", f"Type: {classification.document_type}, Score: {classification.confidence}")
 
+        # 3. EXTRACTION STAGE (NEW DAY 5)
+        if classification.document_type != "unknown":
+            current_stage = "EXTRACTION"
+            log_audit(db, doc_id, "EXTRACTION_STARTED")
+            
+            try:
+                extracted_dict, missing_fields = extract_structured_data(normalized_doc, classification.document_type)
+                doc_record.extracted_data = json.dumps(extracted_dict)
+                
+                # Log any logically required fields that the LLM missed
+                for missing_field in missing_fields:
+                    log_audit(db, doc_id, "REQUIRED_FIELD_MISSING", f"Field: {missing_field} in {classification.document_type}")
+                
+                final_status = JobStatus.EXTRACTED.value
+                log_audit(db, doc_id, "EXTRACTION_COMPLETED", f"Type: {classification.document_type}")
+                
+            except Exception as extract_err:
+                # Catch Pydantic validation errors or JSON decode errors and explicitly raise to fail the job
+                raise Exception(f"{extract_err}")
+
         # Finalize processing job
         job.status = final_status
         job.completed_at = datetime.datetime.utcnow()
         doc_record.status = final_status
         db.commit()
-        print(f"Successfully processed and classified document {doc_id} as {classification.document_type}")
+        print(f"Successfully processed, classified, and extracted document {doc_id} as {classification.document_type}")
         
     except Exception as e:
         job.status = JobStatus.FAILED.value
         job.failed_at = datetime.datetime.utcnow()
         job.failure_reason = str(e)
         
-        # Ensure doc_record exists before attempting to update it in the exception block
         if 'doc_record' in locals() and doc_record:
             doc_record.status = JobStatus.FAILED.value
             
         db.commit()
         
-        # Log failure based on which stage the error occurred in
+        # Accurately log which stage caused the crash
         log_audit(db, doc_id, f"{current_stage}_FAILED", str(e))
         print(f"Failed {current_stage.lower()} document {doc_id}: {e}")
 

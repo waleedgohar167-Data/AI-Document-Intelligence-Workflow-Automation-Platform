@@ -14,6 +14,7 @@ class JobStatus(str, enum.Enum):
     PARSED = "parsed"
     CLASSIFIED = "classified"
     NEEDS_REVIEW = "needs_review"
+    EXTRACTED = "extracted"  # NEW DAY 5 STATUS
     FAILED = "failed"
 
 class DocumentRecord(Base):
@@ -29,6 +30,9 @@ class DocumentRecord(Base):
     document_type = Column(String, nullable=True)
     confidence_score = Column(Float, nullable=True)
     requires_human_review = Column(Boolean, default=False)
+    
+    # Extraction Storage (Day 5)
+    extracted_data = Column(Text, nullable=True)
 
 class ProcessingJob(Base):
     __tablename__ = "processing_jobs"
