@@ -10,7 +10,7 @@ from app.schemas.classification import NormalizedDocument
 from app.services.classifier import classify_document, CONFIDENCE_THRESHOLD
 from app.services.extractor import extract_structured_data
 from app.services.validator import validate_document
-from app.services.confidence import calculate_overall_confidence
+from app.services.confidence import calculate_routing_decision
 
 STORAGE_PARSED_DIR = "storage/parsed"
 os.makedirs(STORAGE_PARSED_DIR, exist_ok=True)
@@ -137,17 +137,17 @@ def process_job(db, job):
                 
                 # 5. MODULE 7: CONFIDENCE & ROUTING STAGE
                 current_stage = "CONFIDENCE_ROUTING"
-                conf_result = calculate_overall_confidence(classification.confidence, extracted_dict, val_result["passed"])
+                conf_result = calculate_routing_decision(classification.document_type, classification.confidence, extracted_dict, val_result["passed"])
                 
-                doc_record.confidence_breakdown = json.dumps(conf_result["confidence_breakdown"])
                 doc_record.final_confidence_score = conf_result["overall_confidence"]
                 
-                log_audit(db, doc_id, "CONFIDENCE_CALCULATED", json.dumps(conf_result))
+                # Improvement 6: Store config in audit record
+                log_audit(db, doc_id, "ROUTING_DECISION_CALCULATED", json.dumps(conf_result))
                 
-                if conf_result["review_required"]:
+                if conf_result["decision"] == "NEEDS_REVIEW":
                     doc_record.requires_human_review = True
                     final_status = JobStatus.NEEDS_REVIEW.value
-                    log_audit(db, doc_id, "HUMAN_REVIEW_REQUIRED", f"Score: {conf_result['overall_confidence']}")
+                    log_audit(db, doc_id, "HUMAN_REVIEW_REQUIRED", json.dumps({"reasons": conf_result["decision_reasons"]}))
                 else:
                     final_status = JobStatus.APPROVED.value
                     log_audit(db, doc_id, "AUTO_APPROVED", f"Score: {conf_result['overall_confidence']}")

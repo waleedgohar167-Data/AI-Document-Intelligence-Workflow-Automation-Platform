@@ -37,3 +37,16 @@ Document Processing Pipeline
   [Current: Deterministic Validation] (Pydantic)
     ↓
   [Future: Human Review / Persistence]
+
+  ## Pipeline Architecture & Status
+
+*   ✅ **Upload & Storage API** (Implemented)
+*   ✅ **Parse/OCR** (Implemented)
+*   ✅ **Classification** (Implemented - Deterministic Heuristic)
+*   ✅ **Extraction** (Implemented - Pydantic Validation)
+*   ✅ **Deterministic Validation** (Implemented - Strict Business Rules)
+*   ✅ **Confidence Aggregation** (Implemented - Dual Signal)
+*   ✅ **Human-in-the-Loop / Auto Approval** (Implemented)
+*   ✅ **Persistence & Audit Events** (Implemented)
+*   ⏳ **Workflow Automation & Webhooks** (Planned for Future)
+*   ⏳ **Semantic Search / RAG** (Planned for Future)

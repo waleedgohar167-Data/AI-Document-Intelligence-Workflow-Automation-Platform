@@ -1,44 +1,54 @@
 import os
 
-# Configurable via environment variable
 AUTO_APPROVE_THRESHOLD = float(os.getenv("AUTO_APPROVE_THRESHOLD", "0.85"))
+CRITICAL_FIELD_THRESHOLD = float(os.getenv("CRITICAL_FIELD_THRESHOLD", "0.90"))
 
-def calculate_overall_confidence(classification_score: float, extracted_data: dict, validation_passed: bool) -> dict:
+CRITICAL_FIELDS = {
+    "invoice": ["total", "currency", "invoice_number", "supplier", "invoice_date"],
+    "purchase_order": ["po_number", "supplier", "total"],
+    "contract": ["parties", "effective_date", "termination_date"]
+}
+
+def calculate_routing_decision(doc_type: str, classification_score: float, extracted_data: dict, validation_passed: bool) -> dict:
     field_scores = []
-    
-    # Recursively find all 'confidence' keys in the nested extraction dict
     def extract_confidences(d):
         if isinstance(d, dict):
-            if 'confidence' in d and isinstance(d['confidence'], (int, float)):
-                field_scores.append(d['confidence'])
-            for v in d.values():
-                extract_confidences(v)
+            if 'confidence' in d and isinstance(d['confidence'], (int, float)): field_scores.append(d['confidence'])
+            for v in d.values(): extract_confidences(v)
         elif isinstance(d, list):
-            for item in d:
-                extract_confidences(item)
+            for item in d: extract_confidences(item)
 
     extract_confidences(extracted_data)
-    
     avg_field_confidence = sum(field_scores) / len(field_scores) if field_scores else 0.0
+    overall_confidence = (classification_score * 0.40) + (avg_field_confidence * 0.60)
     
-    # Formula: 40% classification, 60% extraction average. 
-    overall_confidence = (classification_score * 0.4) + (avg_field_confidence * 0.6)
-    
-    # Deterministic Override
-    review_required = False
+    reasons = []
     if not validation_passed:
-        review_required = True
-        overall_confidence = min(overall_confidence, 0.5) # Penalize score if math fails
-    elif overall_confidence < AUTO_APPROVE_THRESHOLD:
-        review_required = True
+        reasons.append("validation_failed")
+    if overall_confidence < AUTO_APPROVE_THRESHOLD:
+        reasons.append("overall_confidence_below_threshold")
+        
+    critical_failed = False
+    for cf in CRITICAL_FIELDS.get(doc_type, []):
+        cf_score = extracted_data.get(cf, {}).get("confidence", 0.0)
+        if cf_score < CRITICAL_FIELD_THRESHOLD:
+            critical_failed = True
+            reasons.append(f"critical_field_{cf}_below_threshold")
+
+    if not validation_passed or overall_confidence < AUTO_APPROVE_THRESHOLD or critical_failed:
+        decision = "NEEDS_REVIEW"
+    else:
+        decision = "AUTO_APPROVED"
 
     return {
-        "overall_confidence": round(overall_confidence, 3),
-        "confidence_breakdown": {
-            "classification_score": classification_score,
-            "average_field_confidence": round(avg_field_confidence, 3),
-            "validation_passed": validation_passed,
-            "configured_threshold": AUTO_APPROVE_THRESHOLD
-        },
-        "review_required": review_required
+        "overall_confidence": round(overall_confidence, 4),
+        "validation_passed": validation_passed,
+        "decision": decision,
+        "decision_reasons": reasons,
+        "configuration": {
+            "auto_approval_threshold": AUTO_APPROVE_THRESHOLD,
+            "critical_field_threshold": CRITICAL_FIELD_THRESHOLD,
+            "confidence_formula_version": "v1.1",
+            "validation_policy_version": "v1.1"
+        }
     }

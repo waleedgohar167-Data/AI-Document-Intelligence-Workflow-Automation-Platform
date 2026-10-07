@@ -77,3 +77,23 @@ If an LLM extracts an invoice total of $5,000, a human reviewer must be able to 
 ## 7. Confidence & Human Review (Module 7)
 **Decision:** `AUTO_APPROVE_THRESHOLD` is set to `0.85` via Environment Variable. 
 **Why:** We aggregate classification (40%) and average field extraction (60%) confidence. Setting it at 0.85 balances automation with risk. Any document failing deterministic validation automatically has its score penalized and is forced into the Human Review Queue, proving that human review is a safety feature, not a failure.
+
+## 8. Financial Precision 
+**Decision:** All monetary validations use Python's `Decimal` type instead of `float`.
+**Why:** Floating-point math introduces micro-inaccuracies (e.g., `0.1 + 0.2 = 0.30000000000000004`). Financial cross-checks (`subtotal + tax == total`) must be perfectly deterministic. 
+
+## 9. Separating Confidence and Validation Signals 
+**Decision:** Removed the artificial confidence score cap of 0.5. 
+**Why:** A document can have 99% extraction confidence and still fail a business rule (e.g., `invoice_date > due_date`). Confidence and validation are separate facts. The routing decision evaluates them independently.
+
+## 10. Critical Field Floor 
+**Decision:** Auto-approval requires `validation_passed == True`, `overall_confidence >= AUTO_APPROVE_THRESHOLD`, AND all critical fields (e.g., `total`, `invoice_number`) must exceed `CRITICAL_FIELD_THRESHOLD`.
+**Why:** Average confidence hides catastrophic localized failures. High confidence on line items cannot compensate for low confidence on the final total.
+
+## 11. Protected Review State Transitions 
+**Decision:** Human review endpoints strictly enforce valid state transitions (e.g., `NEEDS_REVIEW -> APPROVED`). 
+**Why:** Prevents race conditions, double-approvals, or modifying documents already finalized.
+
+## 12. Reviewer Attribution Security 
+**Decision:** Reviewer identity is currently supplied by the API caller. 
+**Why:** Authenticated reviewer identity and role enforcement are planned as part of security hardening. This will be addressed when formal JWT authentication is implemented.
