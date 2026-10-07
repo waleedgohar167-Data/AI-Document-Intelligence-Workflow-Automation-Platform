@@ -9,6 +9,8 @@ from app.services.parser import extract_pdf, extract_docx
 from app.schemas.classification import NormalizedDocument
 from app.services.classifier import classify_document, CONFIDENCE_THRESHOLD
 from app.services.extractor import extract_structured_data
+from app.services.validator import validate_document
+from app.services.confidence import calculate_overall_confidence
 
 STORAGE_PARSED_DIR = "storage/parsed"
 os.makedirs(STORAGE_PARSED_DIR, exist_ok=True)
@@ -27,7 +29,6 @@ def sync_document_status(db, doc_id, status):
 
 def claim_next_job(db):
     """Point 1 & 14: Atomic Processing Job Claiming"""
-    # SQLite atomic lock simulation using UPDATE rowcount
     now = datetime.datetime.utcnow()
     job = db.query(ProcessingJob).filter(ProcessingJob.status == JobStatus.QUEUED.value).first()
     
@@ -42,7 +43,6 @@ def claim_next_job(db):
     result = db.execute(stmt)
     db.commit()
     
-    # If rowcount is 0, another worker grabbed it first
     if result.rowcount == 0:
         return None
         
@@ -105,24 +105,54 @@ def process_job(db, job):
             final_status = JobStatus.CLASSIFIED.value
             log_audit(db, doc_id, "DOCUMENT_CLASSIFIED", f"Type: {classification.document_type}, Score: {classification.confidence}")
 
-        # 3. EXTRACTION STAGE (NEW DAY 5)
+        # 3. EXTRACTION STAGE
         if classification.document_type != "unknown":
             current_stage = "EXTRACTION"
             log_audit(db, doc_id, "EXTRACTION_STARTED")
             
             try:
                 extracted_dict, missing_fields = extract_structured_data(normalized_doc, classification.document_type)
-                doc_record.extracted_data = json.dumps(extracted_dict)
                 
-                # Log any logically required fields that the LLM missed
+                # Use default=str to serialize Date objects gracefully for the database
+                doc_record.extracted_data = json.dumps(extracted_dict, default=str)
+                
                 for missing_field in missing_fields:
                     log_audit(db, doc_id, "REQUIRED_FIELD_MISSING", f"Field: {missing_field} in {classification.document_type}")
                 
-                final_status = JobStatus.EXTRACTED.value
                 log_audit(db, doc_id, "EXTRACTION_COMPLETED", f"Type: {classification.document_type}")
                 
+                # 4. MODULE 6: VALIDATION STAGE
+                current_stage = "VALIDATION"
+                log_audit(db, doc_id, "VALIDATION_STARTED")
+                
+                val_result = validate_document(classification.document_type, extracted_dict, missing_fields)
+                doc_record.validation_results = json.dumps(val_result)
+                
+                if val_result["passed"]:
+                    log_audit(db, doc_id, "VALIDATION_PASSED")
+                    final_status = JobStatus.VALIDATED.value
+                else:
+                    log_audit(db, doc_id, "VALIDATION_FAILED", json.dumps(val_result["failures"]))
+                    final_status = JobStatus.VALIDATION_FAILED.value
+                
+                # 5. MODULE 7: CONFIDENCE & ROUTING STAGE
+                current_stage = "CONFIDENCE_ROUTING"
+                conf_result = calculate_overall_confidence(classification.confidence, extracted_dict, val_result["passed"])
+                
+                doc_record.confidence_breakdown = json.dumps(conf_result["confidence_breakdown"])
+                doc_record.final_confidence_score = conf_result["overall_confidence"]
+                
+                log_audit(db, doc_id, "CONFIDENCE_CALCULATED", json.dumps(conf_result))
+                
+                if conf_result["review_required"]:
+                    doc_record.requires_human_review = True
+                    final_status = JobStatus.NEEDS_REVIEW.value
+                    log_audit(db, doc_id, "HUMAN_REVIEW_REQUIRED", f"Score: {conf_result['overall_confidence']}")
+                else:
+                    final_status = JobStatus.APPROVED.value
+                    log_audit(db, doc_id, "AUTO_APPROVED", f"Score: {conf_result['overall_confidence']}")
+
             except Exception as extract_err:
-                # Catch Pydantic validation errors or JSON decode errors and explicitly raise to fail the job
                 raise Exception(f"{extract_err}")
 
         # Finalize processing job
@@ -130,7 +160,7 @@ def process_job(db, job):
         job.completed_at = datetime.datetime.utcnow()
         doc_record.status = final_status
         db.commit()
-        print(f"Successfully processed, classified, and extracted document {doc_id} as {classification.document_type}")
+        print(f"Successfully processed document {doc_id} to status: {final_status}")
         
     except Exception as e:
         job.status = JobStatus.FAILED.value
@@ -141,8 +171,6 @@ def process_job(db, job):
             doc_record.status = JobStatus.FAILED.value
             
         db.commit()
-        
-        # Accurately log which stage caused the crash
         log_audit(db, doc_id, f"{current_stage}_FAILED", str(e))
         print(f"Failed {current_stage.lower()} document {doc_id}: {e}")
 

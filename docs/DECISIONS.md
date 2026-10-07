@@ -69,3 +69,11 @@ To capture partial valid data even if the LLM omits a field, fields are defined 
 
 **Why per-field confidence and source tracking matters:**
 If an LLM extracts an invoice total of $5,000, a human reviewer must be able to instantly click and see the exact bounding box (`source_page` and `supporting_text`) that generated it. A single document-level confidence score cannot isolate specific hallucinations; per-field confidence allows us to auto-approve 9 fields and flag 1 single field for manual review.
+
+## 6. Deterministic Validation (Module 6)
+**Decision:** Built a strict validation rules engine independent of AI extraction. 
+**Why:** Probabilistic models hallucinate. Deterministic software does not. By forcing the LLM's math through `abs((sub + tax) - tot) <= 0.01`, we protect downstream ERPs from data corruption.
+
+## 7. Confidence & Human Review (Module 7)
+**Decision:** `AUTO_APPROVE_THRESHOLD` is set to `0.85` via Environment Variable. 
+**Why:** We aggregate classification (40%) and average field extraction (60%) confidence. Setting it at 0.85 balances automation with risk. Any document failing deterministic validation automatically has its score penalized and is forced into the Human Review Queue, proving that human review is a safety feature, not a failure.

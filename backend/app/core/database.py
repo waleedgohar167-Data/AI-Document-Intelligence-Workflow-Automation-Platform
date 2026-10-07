@@ -13,8 +13,12 @@ class JobStatus(str, enum.Enum):
     PROCESSING = "processing"
     PARSED = "parsed"
     CLASSIFIED = "classified"
+    EXTRACTED = "extracted"
+    VALIDATED = "validated"          # NEW MODULE 6 STATUS
+    VALIDATION_FAILED = "validation_failed" # NEW MODULE 6 STATUS
     NEEDS_REVIEW = "needs_review"
-    EXTRACTED = "extracted"  # NEW DAY 5 STATUS
+    APPROVED = "approved"            # NEW MODULE 7 STATUS
+    REJECTED = "rejected"            # NEW MODULE 7 STATUS
     FAILED = "failed"
 
 class DocumentRecord(Base):
@@ -26,13 +30,18 @@ class DocumentRecord(Base):
     status = Column(String, default=JobStatus.QUEUED.value)
     storage_reference = Column(String)
     
-    # Task 4 & 5: Classification Storage
+    # Classification Storage
     document_type = Column(String, nullable=True)
-    confidence_score = Column(Float, nullable=True)
+    confidence_score = Column(Float, nullable=True) # Initial classification score
     requires_human_review = Column(Boolean, default=False)
     
     # Extraction Storage (Day 5)
     extracted_data = Column(Text, nullable=True)
+    
+    # Validation & Confidence Storage (Modules 6 & 7)
+    validation_results = Column(Text, nullable=True)
+    confidence_breakdown = Column(Text, nullable=True)
+    final_confidence_score = Column(Float, nullable=True) # Mod 7 Aggregated Score
 
 class ProcessingJob(Base):
     __tablename__ = "processing_jobs"
