@@ -1,4 +1,4 @@
-from sqlalchemy import create_engine, Column, String, DateTime, Text, Enum, Float, Boolean
+from sqlalchemy import create_engine, Column, String, DateTime, Text, Enum, Float, Boolean, event
 from sqlalchemy.orm import declarative_base, sessionmaker
 import datetime
 import enum
@@ -14,11 +14,11 @@ class JobStatus(str, enum.Enum):
     PARSED = "parsed"
     CLASSIFIED = "classified"
     EXTRACTED = "extracted"
-    VALIDATED = "validated"          # NEW MODULE 6 STATUS
-    VALIDATION_FAILED = "validation_failed" # NEW MODULE 6 STATUS
+    VALIDATED = "validated"          # MODULE 6 STATUS
+    VALIDATION_FAILED = "validation_failed" # MODULE 6 STATUS
     NEEDS_REVIEW = "needs_review"
-    APPROVED = "approved"            # NEW MODULE 7 STATUS
-    REJECTED = "rejected"            # NEW MODULE 7 STATUS
+    APPROVED = "approved"            # MODULE 7 STATUS
+    REJECTED = "rejected"            # MODULE 7 STATUS
     FAILED = "failed"
 
 class DocumentRecord(Base):
@@ -26,7 +26,7 @@ class DocumentRecord(Base):
     id = Column(String, primary_key=True, index=True)
     original_filename = Column(String)
     file_type = Column(String)
-    upload_timestamp = Column(DateTime, default=datetime.datetime.utcnow)
+    upload_timestamp = Column(DateTime, default=lambda: datetime.datetime.now(datetime.timezone.utc))
     status = Column(String, default=JobStatus.QUEUED.value)
     storage_reference = Column(String)
     
@@ -53,13 +53,30 @@ class ProcessingJob(Base):
     failed_at = Column(DateTime, nullable=True)
     failure_reason = Column(Text, nullable=True)
 
+# ---------------------------------------------------------
+# DAY 8: UPDATED AUDIT EVENT TABLE (Task 1)
+# ---------------------------------------------------------
 class AuditEvent(Base):
     __tablename__ = "audit_events"
     id = Column(String, primary_key=True, index=True)
     document_id = Column(String, index=True)
-    event_name = Column(String)
-    timestamp = Column(DateTime, default=datetime.datetime.utcnow)
-    details = Column(String, nullable=True)
+    event_type = Column(String, index=True)
+    actor = Column(String, default="system")
+    timestamp = Column(DateTime, default=lambda: datetime.datetime.now(datetime.timezone.utc))
+    payload = Column(Text, default="{}") # JSON string
+    model_version = Column(String, nullable=True)
+    policy_version = Column(String, nullable=True)
+
+# ---------------------------------------------------------
+# DAY 8: STRICT IMMUTABILITY (Task 5)
+# ---------------------------------------------------------
+@event.listens_for(AuditEvent, "before_update")
+def prevent_audit_update(mapper, connection, target):
+    raise Exception("Strict Immutability Violation: Audit events cannot be modified.")
+
+@event.listens_for(AuditEvent, "before_delete")
+def prevent_audit_delete(mapper, connection, target):
+    raise Exception("Strict Immutability Violation: Audit events cannot be deleted.")
 
 Base.metadata.create_all(bind=engine)
 

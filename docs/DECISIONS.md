@@ -97,3 +97,18 @@ If an LLM extracts an invoice total of $5,000, a human reviewer must be able to 
 ## 12. Reviewer Attribution Security 
 **Decision:** Reviewer identity is currently supplied by the API caller. 
 **Why:** Authenticated reviewer identity and role enforcement are planned as part of security hardening. This will be addressed when formal JWT authentication is implemented.
+
+## ADR-013: Audit Trail Immutability 
+*   **Decision:** Immutability is strictly enforced at the database level using SQLAlchemy `before_update` and `before_delete` event listeners.
+*   **Reason:** An audit trail is legally and operationally meaningless if the system (or a bad actor) can retroactively alter history. Raising exceptions at the ORM layer ensures silent status transitions are impossible.
+*   **Decision:** Model and Policy versions are snapshotted on every event payload.
+*   **Reason:** If the `AUTO_APPROVE_THRESHOLD` changes from 0.85 to 0.90, we must be able to explain exactly why a document was approved six months ago under the old policy.
+
+## ADR-014: RAG Chunking Strategy 
+*   **Decision:** Chunking maps directly to the parser's OCR/Text blocks (approx. paragraph size) rather than arbitrary character limits.
+*   **Reason:** This preserves natural semantic boundaries and perfectly maps text back to its exact `page_number` for frontend UI highlighting and strict Q&A citation grounding.
+*   **Limitations:** Highly complex multi-column tables may get fragmented.
+
+## ADR-015: Vector Embedding Architecture 
+*   **Decision:** Built an abstracted `VectorStore` interface currently running in-memory with a heuristic mock embedding for the V1 local review.
+*   **Reason:** Forcing reviewers to install C++ compilers for `chromadb` or download heavy PyTorch weights for `sentence-transformers` violates the portability of Day 1. The interface is perfectly cleanly decoupled, allowing production to inject a pgvector/OpenAI implementation with zero changes to the business logic.
