@@ -126,3 +126,11 @@ If an LLM extracts an invoice total of $5,000, a human reviewer must be able to 
 *   **Observation:** Current chunking maps 1:1 to OCR blocks.
 *   **Honest Limitations:** OCR blocks frequently fragment natural semantic boundaries (e.g., a sentence split across two text blocks or pages). Currently, if a chunk logically spans multiple OCR blocks, it is treated as distinct chunks, which could degrade semantic retrieval. If a block theoretically spans pages, it retains the primary page metadata, limiting citation granularity.
 *   **Future Improvement:** Implement a sliding-window character/token chunker combined with OCR block metadata to maintain natural sentence boundaries while retaining page citations.
+
+## ADR-019: Fault-Tolerant Workflow Automation (Day 10)
+*   **Business Problem Solved:** Extracted AI data yields no ROI unless it successfully reaches downstream legacy systems (ERP/CRM).
+*   **Decision:** Implemented an event-driven Webhook Dispatcher utilizing Exponential Backoff retry logic.
+*   **Why this way:** Legacy ERPs are prone to intermittent downtime or rate-limiting. A naive HTTP POST will fail and drop critical data. Implementing an exponential backoff (1s, 2s, 4s) ensures transient network blips do not cause silent data loss.
+*   **Alternatives Considered:** Apache Kafka or RabbitMQ. Rejected for V1 as they introduce heavy infrastructure dependencies that violate our lightweight, portable container architecture requirement.
+*   **Known Limitations:** Currently, if all retries fail, the system logs an error but drops the payload. 
+*   **Future Improvement:** Implement a true database-backed Dead Letter Queue (DLQ) table to store persistently failed webhooks for manual admin replay.
