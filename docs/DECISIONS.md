@@ -112,3 +112,17 @@ If an LLM extracts an invoice total of $5,000, a human reviewer must be able to 
 ## ADR-015: Vector Embedding Architecture 
 *   **Decision:** Built an abstracted `VectorStore` interface currently running in-memory with a heuristic mock embedding for the V1 local review.
 *   **Reason:** Forcing reviewers to install C++ compilers for `chromadb` or download heavy PyTorch weights for `sentence-transformers` violates the portability of Day 1. The interface is perfectly cleanly decoupled, allowing production to inject a pgvector/OpenAI implementation with zero changes to the business logic.
+
+## ADR-016: Strict Database-Level Audit Immutability 
+*   **Decision:** Replaced SQLAlchemy `before_update` hooks with SQLite native `CREATE TRIGGER` constraints.
+*   **Reason:** Application-level enforcement is insufficient because bad actors or rogue scripts could connect directly to the database via raw SQL and modify records, bypassing the ORM entirely. Native DB triggers protect against raw SQL injection, direct DB administration edits, and application layer bypasses.
+
+## ADR-017: Production RAG Implementation & Migration Path 
+*   **Decision:** The current V1 system explicitly utilizes a non-persistent in-memory array for vector storage and a heuristic keyword mock for embeddings. This guarantees local portability for architectural review without heavy dependencies.
+*   **Production Migration Path:** The array will be replaced by `pgvector` (PostgreSQL) or `ChromaDB`. The mock embeddings will be replaced by `text-embedding-3-small` (OpenAI) or a localized `sentence-transformers` model. 
+*   **Evaluation Metrics:** Production retrieval will be validated using the RAGAS framework, specifically measuring Context Precision, Answer Relevance, and Faithfulness.
+
+## ADR-018: OCR Chunking Strategy Limitations 
+*   **Observation:** Current chunking maps 1:1 to OCR blocks.
+*   **Honest Limitations:** OCR blocks frequently fragment natural semantic boundaries (e.g., a sentence split across two text blocks or pages). Currently, if a chunk logically spans multiple OCR blocks, it is treated as distinct chunks, which could degrade semantic retrieval. If a block theoretically spans pages, it retains the primary page metadata, limiting citation granularity.
+*   **Future Improvement:** Implement a sliding-window character/token chunker combined with OCR block metadata to maintain natural sentence boundaries while retaining page citations.
