@@ -1,4 +1,4 @@
-from sqlalchemy import create_engine, Column, String, DateTime, Text, Enum, Float, Boolean, event
+from sqlalchemy import create_engine, Column, String, DateTime, Text, Enum, Float, Boolean, event, text
 from sqlalchemy.orm import declarative_base, sessionmaker
 import datetime
 import enum
@@ -68,15 +68,24 @@ class AuditEvent(Base):
     policy_version = Column(String, nullable=True)
 
 # ---------------------------------------------------------
-# DAY 8: STRICT IMMUTABILITY (Task 5)
+# DAY 8: NATIVE DATABASE-LEVEL IMMUTABILITY (Improvement 1)
 # ---------------------------------------------------------
-@event.listens_for(AuditEvent, "before_update")
-def prevent_audit_update(mapper, connection, target):
-    raise Exception("Strict Immutability Violation: Audit events cannot be modified.")
-
-@event.listens_for(AuditEvent, "before_delete")
-def prevent_audit_delete(mapper, connection, target):
-    raise Exception("Strict Immutability Violation: Audit events cannot be deleted.")
+@event.listens_for(AuditEvent.__table__, 'after_create')
+def create_audit_triggers(target, connection, **kw):
+    connection.execute(text("""
+        CREATE TRIGGER prevent_audit_update 
+        BEFORE UPDATE ON audit_events 
+        BEGIN 
+            SELECT RAISE(ABORT, 'Strict Immutability Violation: Audit events cannot be modified.'); 
+        END;
+    """))
+    connection.execute(text("""
+        CREATE TRIGGER prevent_audit_delete 
+        BEFORE DELETE ON audit_events 
+        BEGIN 
+            SELECT RAISE(ABORT, 'Strict Immutability Violation: Audit events cannot be deleted.'); 
+        END;
+    """))
 
 Base.metadata.create_all(bind=engine)
 
