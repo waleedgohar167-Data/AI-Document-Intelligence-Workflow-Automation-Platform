@@ -134,3 +134,18 @@ If an LLM extracts an invoice total of $5,000, a human reviewer must be able to 
 *   **Alternatives Considered:** Apache Kafka or RabbitMQ. Rejected for V1 as they introduce heavy infrastructure dependencies that violate our lightweight, portable container architecture requirement.
 *   **Known Limitations:** Currently, if all retries fail, the system logs an error but drops the payload. 
 *   **Future Improvement:** Implement a true database-backed Dead Letter Queue (DLQ) table to store persistently failed webhooks for manual admin replay.
+
+## ADR-020: Workflow Automation Enhancements (Day 10)
+* **Exponential Backoff Rationale:** Implemented a base-2 backoff (1s, 2s, 4s) with a max of 3 retries. This absorbs transient 502/503 network blips without indefinitely blocking the thread.
+* **ERP Simulation:** A mock `POST /mock-erp/ingest` endpoint was built to simulate downstream success/failure. A real integration would require authenticating via OAuth2 and mapping our Pydantic JSON to the specific XML/JSON schema of the client's SAP/Salesforce instance. We would simply update the `destination_url` in the mapping config to point to the real API.
+* **DLQ Design (Database vs Log):** A database-backed DLQ was chosen over log-based monitoring because it allows programmatic, atomic replay via API without requiring a developer to manually grep server logs and reconstruct lost JSON payloads.
+* **Workflow Trigger Mapping:** Hardcoding endpoints was rejected. A configurable mapping dictionary separates logic by document type. An Invoice triggering AP creation is fundamentally a different business domain than a Contract triggering CRM assignment.
+* **Retry Audit Trail:** Every retry attempt is recorded in the immutable audit log because compliance auditors must verify *when* and *how many times* a system attempted delivery before classifying a payload as abandoned.
+
+.\venv\Scripts\Activate.ps1
+
+uvicorn app.main:app --reload
+
+rm documents.db
+
+python -m pytest

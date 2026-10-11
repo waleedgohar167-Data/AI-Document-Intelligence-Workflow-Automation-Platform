@@ -1,7 +1,8 @@
-from sqlalchemy import create_engine, Column, String, DateTime, Text, Enum, Float, Boolean, event, text
+from sqlalchemy import create_engine, Column, String, DateTime, Text, Enum, Float, Boolean, event, text, Integer, JSON
 from sqlalchemy.orm import declarative_base, sessionmaker
 import datetime
 import enum
+import uuid
 
 # SQLite database setup
 engine = create_engine("sqlite:///./documents.db", connect_args={"check_same_thread": False})
@@ -54,7 +55,7 @@ class ProcessingJob(Base):
     failure_reason = Column(Text, nullable=True)
 
 # ---------------------------------------------------------
-# DAY 8: UPDATED AUDIT EVENT TABLE (Task 1)
+# DAY 8: NATIVE AUDIT EVENT TABLE
 # ---------------------------------------------------------
 class AuditEvent(Base):
     __tablename__ = "audit_events"
@@ -68,7 +69,21 @@ class AuditEvent(Base):
     policy_version = Column(String, nullable=True)
 
 # ---------------------------------------------------------
-# DAY 8: NATIVE DATABASE-LEVEL IMMUTABILITY (Improvement 1)
+# DAY 10: DEAD LETTER QUEUE (Improvement 1)
+# ---------------------------------------------------------
+class DeadLetterQueue(Base):
+    __tablename__ = "dead_letter_queue"
+    dlq_id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    document_id = Column(String, index=True)
+    payload = Column(JSON)
+    destination_url = Column(String)
+    retry_count = Column(Integer)
+    last_error = Column(String)
+    created_at = Column(DateTime, default=lambda: datetime.datetime.now(datetime.timezone.utc))
+    status = Column(String, default="PENDING") # PENDING or REPLAYED
+
+# ---------------------------------------------------------
+# DAY 8: NATIVE DATABASE-LEVEL IMMUTABILITY
 # ---------------------------------------------------------
 @event.listens_for(AuditEvent.__table__, 'after_create')
 def create_audit_triggers(target, connection, **kw):
