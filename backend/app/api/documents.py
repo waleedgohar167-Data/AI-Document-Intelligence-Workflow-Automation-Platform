@@ -1,9 +1,10 @@
 import os
 import shutil
 import uuid
+import json
 from fastapi import APIRouter, UploadFile, File, HTTPException, Depends
 from sqlalchemy.orm import Session
-from app.core.database import get_db, DocumentRecord, ProcessingJob
+from app.core.database import get_db, DocumentRecord, ProcessingJob, AuditEvent
 
 router = APIRouter()
 
@@ -13,12 +14,45 @@ ALLOWED_MIME_TYPES = {
     "image/png": ".png",
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document": ".docx"
 }
+
+MAGIC_NUMBERS = {
+    "application/pdf": b"%PDF",
+    "image/jpeg": b"\xff\xd8\xff",
+    "image/png": b"\x89PNG\r\n\x1a\n",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document": b"PK\x03\x04"
+}
+
 MAX_FILE_SIZE = 10 * 1024 * 1024
 STORAGE_DIR = "storage/documents"
 os.makedirs(STORAGE_DIR, exist_ok=True)
 
 @router.post("/documents")
 async def upload_document(file: UploadFile = File(...), db: Session = Depends(get_db)):
+    
+    # --- START OF NEW DAY 11 MIME VALIDATION ---
+    header_bytes = await file.read(8)
+    await file.seek(0) # Reset file pointer for downstream processing
+    
+    claimed_type = file.content_type
+    expected_magic = MAGIC_NUMBERS.get(claimed_type)
+    
+    if expected_magic and not header_bytes.startswith(expected_magic):
+        # Create the required Audit Event
+        audit_event = AuditEvent(
+            id=str(uuid.uuid4()),
+            document_id="REJECTED_PRE_INGEST",
+            event_type="UPLOAD_REJECTED_INVALID_MIME",
+            payload=json.dumps({"claimed_type": claimed_type, "filename": file.filename})
+        )
+        db.add(audit_event)
+        db.commit()
+        
+        raise HTTPException(
+            status_code=400, 
+            detail={"error": "Invalid file signature", "reason": f"File bytes do not match claimed MIME type: {claimed_type}"}
+        )
+    # --- END OF NEW DAY 11 MIME VALIDATION ---
+
     # Task 5 Error: Unsupported file type
     if file.content_type not in ALLOWED_MIME_TYPES:
         raise HTTPException(status_code=415, detail={"error": "Unsupported file type", "allowed": list(ALLOWED_MIME_TYPES.keys())})
