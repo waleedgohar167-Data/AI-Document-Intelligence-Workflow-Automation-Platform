@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from datetime import datetime
-from app.api import documents
+from app.api import documents, knowledge
 
 app = FastAPI(
     title="AI Document Intelligence API",
@@ -9,6 +9,7 @@ app = FastAPI(
 )
 
 app.include_router(documents.router)
+app.include_router(knowledge.router)
 
 @app.get("/health")
 def health_check():
