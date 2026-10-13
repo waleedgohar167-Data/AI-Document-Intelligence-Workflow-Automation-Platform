@@ -148,4 +148,6 @@ uvicorn app.main:app --reload
 
 rm documents.db
 
+rm documents.db
+
 python -m pytest
