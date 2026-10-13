@@ -20,23 +20,7 @@ def search_knowledge_base(request: QueryRequest):
 
 @router.post("/knowledge/query", response_model=QueryResponse)
 def ask_knowledge_base(request: QueryRequest):
-    query_lower = request.query.lower()
-    
-    # --- DEMO OVERRIDES FOR THE LOOM VIDEO ---
-    # This guarantees your video perfectly matches the README when you type these queries
-    if "total" in query_lower or "amount" in query_lower:
-        return QueryResponse(
-            answer="The total amount due is $500.",
-            citations=["doc_550e8400-e29b-41d4-a716-446655440000_page_1"]
-        )
-    elif "supplier" in query_lower:
-        return QueryResponse(
-            answer="The supplier is TechCorp LLC.",
-            citations=["doc_550e8400-e29b-41d4-a716-446655440000_page_1"]
-        )
-    
-    # --- PRESERVING YOUR ORIGINAL RAG LOGIC ---
-    # Task 5: Grounded Q&A for any other queries
+    # Honest, production-ready RAG retrieval (Hard-coded demo responses removed)
     results = search_chunks(request.query)
     
     if not results:
@@ -52,6 +36,6 @@ def ask_knowledge_base(request: QueryRequest):
     ]
     
     return QueryResponse(
-        answer=f"Based on the provided documents, here is the information regarding '{request.query}'.",
+        answer=f"Based on honest retrieval, {len(results)} context chunks were found regarding '{request.query}'. (Note: Final LLM answer generation is pending production integration).",
         citations=formatted_citations
     )

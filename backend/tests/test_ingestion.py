@@ -42,7 +42,8 @@ def test_unsupported_file_type():
 
 def test_oversized_file(monkeypatch):
     monkeypatch.setattr(documents, "MAX_FILE_SIZE", 10)
-    file_content = b"This is definitively larger than 10 bytes."
+    # Added %PDF-1.4 so it passes the signature check and properly tests the size limit
+    file_content = b"%PDF-1.4 This is definitively larger than 10 bytes."
     response = client.post(
         "/documents",
         files={"file": ("large.pdf", file_content, "application/pdf")}

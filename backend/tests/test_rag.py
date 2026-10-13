@@ -86,6 +86,5 @@ def test_unsupported_answer_prevention():
     response = ask_knowledge_base(request)
     
     # Assert that the system explicitly states no documents were found and refuses to answer
-    assert "No relevant documents found" in response["answer"]
-    assert len(response["citations"]) == 0
-    assert len(response["retrieved_chunks"]) == 0
+    assert "No relevant documents found" in response.answer
+    assert len(response.citations) == 0
