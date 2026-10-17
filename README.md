@@ -127,7 +127,7 @@ Any engineer can clone and run this system locally in under 5 minutes.
 ## Testing
 The test suite ensures total pipeline reliability.
 * **How to run:** Execute `pytest` from the backend directory.
-* **Total Test Count:** 28 passing tests.
+* **Total Test Count:** 39 passing tests.
 * **Coverage:** Fully covers file MIME validation, schema extraction logic, RAG retrieval accuracy, and the DLQ webhook replay functionality.
 
 ## Known Limitations
