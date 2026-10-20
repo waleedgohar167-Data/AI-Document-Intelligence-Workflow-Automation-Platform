@@ -123,17 +123,69 @@ This 4-minute demonstration walks through the complete operational lifecycle. It
 }
 ```
 
-## Running Locally
-Any engineer can clone and run this system locally in under 5 minutes.
-**Prerequisites:** Python 3.9+, Git, an OpenAI API Key.
-1. `git clone https://github.com/waleedgohar167-Data/AI-Document-Intelligence-Workflow-Automation-Platformgit`
-2. `cd document-intelligence`
-3. `python -m venv venv`
-4. `source venv/bin/activate` *(Windows: `venv\Scripts\activate`)*
-5. `pip install -r requirements.txt`
-6. Create a `.env` file in the root directory and add: `OPENAI_API_KEY=your_key_here`
-7. Start the server: `uvicorn app.main:app --reload`
-8. Access the Swagger UI at `http://127.0.0.1:8000/docs`
+## Quick-Start & Local Deployment
+
+This repository is designed for simple local setup. Follow the steps below to clone, configure, and run the API server locally in under 5 minutes.
+
+### Prerequisites
+* **Python:** 3.10 or 3.11
+* **Git**
+* **Optional:** Docker & Docker Compose
+
+---
+
+### Method: Native Local Setup (Recommended)
+
+1. **Clone the Repository:**
+   ```bash
+   git clone [https://github.com/waleedgohar167-Data/AI-Document-Intelligence-Workflow-Automation-Platform.git](https://github.com/waleedgohar167-Data/AI-Document-Intelligence-Workflow-Automation-Platform.git)
+   cd AI-Document-Intelligence-Workflow-Automation-Platform
+Set Up Virtual Environment:
+
+Bash
+python -m venv venv
+# On macOS/Linux:
+source venv/bin/activate
+# On Windows (PowerShell):
+.\venv\Scripts\Activate.ps1
+# On Windows (CMD):
+venv\Scripts\activate.bat
+Install Dependencies:
+
+Bash
+pip install --upgrade pip
+pip install -r backend/requirements.txt
+Environment Configuration:
+Copy the example environment file to create your local .env:
+
+Bash
+cp .env.example .env
+(Ensure your .env contains your DATABASE_URL and SECRET_KEY settings).
+
+Run Application Server:
+Run the Uvicorn server from the backend directory:
+
+Bash
+cd backend
+uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
+Access Interactive API Documentation:
+
+Swagger UI: http://127.0.0.1:8000/docs
+
+ReDoc: http://127.0.0.1:8000/redoc
+
+Method 2: Docker Compose Setup
+To run the platform using containerization:
+
+Build and Launch Container:
+
+Bash
+docker-compose up --build
+Access Swagger UI:
+Navigate to http://127.0.0.1:8000/docs.
+
+System Verification & Testing
+All core platform capabilities, security boundaries, and failure handling workflows are validated using an automated pytest test suite comprising 39 unit, integration, and end-to-end pipeline tests with a 100% pass rate.
 
 ## Testing
 The test suite ensures total pipeline reliability.
