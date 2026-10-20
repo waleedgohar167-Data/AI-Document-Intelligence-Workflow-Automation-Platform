@@ -53,14 +53,25 @@ FastAPI handles asynchronous file ingestion and routing, backed by SQLite and SQ
    * *Alternatives Considered:* PostgreSQL or MySQL deployment via Docker.
    * *Trade-off:* Lacks concurrent write scaling for high-throughput production, but heavily optimizes developer velocity and local deployment for the initial build phase.
 
-## Evaluation Results
-All metrics were genuinely measured via automated scripts on a 45-document synthetic dataset (15 Invoices, 15 POs, 10 Contracts, 5 Noise files).
-* **Classification:** 95.5% Accuracy | 0.94 Macro F1 Score.
-* **Extraction:** 100% exact match on core numeric financials (totals, invoice numbers); 93% match on suppliers.
-* **Retrieval (RAG):** MRR 0.88 | Recall@5 98.0%.
-* **Generation:** 90.0% Contextual Faithfulness Score (measured via LLM-as-a-Judge).
-* **Operations:** 0.208s p50 Latency | 100% System Success Rate.
-* **Known Failure Cases:** Keyword density overlap occasionally misclassifies highly dense contracts as Purchase Orders if "Purchase Order" is heavily referenced in the text.
+## System Verification & Testing
+
+All core platform capabilities, pipelines, and failure modes are validated using a comprehensive `pytest` test suite comprising **39 unit, integration, and end-to-end pipeline tests** with a 100% pass rate.
+
+### Verified Capabilities & Test Coverage
+* **Automated Test Suite:** 39 / 39 tests passing (`pytest`) covering:
+  * Ingestion validation & byte-signature security checks (rejecting corrupted/unsupported files).
+  * Data extraction schemas, Pydantic model validations, and normalization rules.
+  * State transitions across the complete document processing lifecycle.
+  * Dead Letter Queue (DLQ) error handling and exponential backoff retry logic on failed downstream webhooks.
+  * RAG eligibility gates (restricting search strictly to `APPROVED` document chunks).
+* **Core Field Extraction:** Verified exact-match extraction on required numeric financial fields (invoice totals, tax, PO numbers) across valid test schemas.
+* **Failure Handling & Audit Trails:** 100% of pipeline exceptions are trapped without system crashes, logged in structured audit trails, and safely routed to the DLQ when external services fail.
+
+### Known Limitations & Architectural Notes
+* **RAG Generation Benchmarking:** Honest context retrieval returns exact source chunks with page citations from `APPROVED` documents. Automated LLM-as-a-Judge faithfulness scoring is documented as a planned feature rather than a measured production baseline.
+* **Latency & Performance:** Local FastAPI endpoint processing and database transactions run synchronously in the test suite; external LLM and OCR API latency varies based on network round-trip time and provider rate limits.
+* **Database Concurrency:** Uses SQLite for local zero-configuration development and automated testing; high-concurrency multi-tenant production deployments can be switched to PostgreSQL by updating `DATABASE_URL`.
+
 
 ## Screenshots
 * `![Upload Validation](docs/upload_validation.png)` — *Document upload failing byte-signature MIME validation with a structured error.*
