@@ -37,35 +37,56 @@ FastAPI handles asynchronous file ingestion and routing, backed by SQLite and SQ
 * **Vector Store / Embeddings:** Chosen to ground Q&A generation in actual document context, eliminating generative hallucinations.
 
 ## Key Engineering Decisions
-1. **Decision: Byte-Signature MIME Validation over HTTP Headers.** 
-   * *Alternatives Considered:* Trusting the `Content-Type` header provided by the client.
-   * *Trade-off:* Requires reading file bytes directly into memory, slightly increasing processing overhead, but absolutely eliminates spoofing security vulnerabilities.
-2. **Decision: Separating Validation from LLM Extraction.**
-   * *Alternatives Considered:* Prompting the LLM to self-validate its own outputs.
-   * *Trade-off:* Requires writing and maintaining manual deterministic validators in Python, but guarantees strict backend type safety and formatting.
-3. **Decision: Implementing a Dead Letter Queue (DLQ).**
-   * *Alternatives Considered:* Fire-and-forget webhooks or basic synchronous retries.
-   * *Trade-off:* Adds architectural and database complexity, but ensures zero data loss during downstream ERP outages.
-4. **Decision: LLM-as-a-Judge for RAG Evaluation.**
-   * *Alternatives Considered:* Manual human grading of generated answers during evaluation.
-   * *Trade-off:* Requires complex prompt engineering for the judge script, but enables highly scalable, automated faithfulness testing against synthetic datasets.
-5. **Decision: SQLite for Initial Storage.**
-   * *Alternatives Considered:* PostgreSQL or MySQL deployment via Docker.
-   * *Trade-off:* Lacks concurrent write scaling for high-throughput production, but heavily optimizes developer velocity and local deployment for the initial build phase.
 
-## System Verification & Testing
+### 1. Byte-Signature MIME Validation over HTTP Headers
+* **Alternatives Considered:** Relying on client-provided `Content-Type` headers or file extensions.
+* **Reasoning:** Client headers are easily spoofed. Inspecting initial Magic Number binary headers at the ingestion gateway guarantees file integrity before disk persistence.
+* **Trade-off Accepted:** Requires reading initial file stream bytes into memory prior to routing, introducing negligible I/O overhead in exchange for blocking extension spoofing vulnerabilities.
 
-All core platform capabilities, pipelines, and failure modes are validated using a comprehensive `pytest` test suite comprising **39 unit, integration, and end-to-end pipeline tests** with a 100% pass rate.
+### 2. Separating Deterministic Validation from Probabilistic LLM Extraction
+* **Alternatives Considered:** Prompting the LLM to self-validate its own extractions or perform self-correction loops.
+* **Reasoning:** Probabilistic models can exhibit high confidence while producing mathematically inconsistent outputs (e.g., line items failing to sum to the grand total). Separating extraction from rule validation guarantees backend type safety.
+* **Trade-off Accepted:** Requires maintaining explicit Python business logic and Pydantic schemas, but ensures arithmetic contradictions are never auto-approved.
 
-### Verified Capabilities & Test Coverage
-* **Automated Test Suite:** 39 / 39 tests passing (`pytest`) covering:
-  * Ingestion validation & byte-signature security checks (rejecting corrupted/unsupported files).
-  * Data extraction schemas, Pydantic model validations, and normalization rules.
-  * State transitions across the complete document processing lifecycle.
-  * Dead Letter Queue (DLQ) error handling and exponential backoff retry logic on failed downstream webhooks.
-  * RAG eligibility gates (restricting search strictly to `APPROVED` document chunks).
-* **Core Field Extraction:** Verified exact-match extraction on required numeric financial fields (invoice totals, tax, PO numbers) across valid test schemas.
-* **Failure Handling & Audit Trails:** 100% of pipeline exceptions are trapped without system crashes, logged in structured audit trails, and safely routed to the DLQ when external services fail.
+### 3. Database-Backed Dead Letter Queue (DLQ) over In-Memory Retries
+* **Alternatives Considered:** In-memory async retries or immediate fire-and-forget webhook dispatches.
+* **Reasoning:** In-memory retry queues lose pending payload state if the application server restarts during prolonged downstream ERP outages.
+* **Trade-off Accepted:** Adds schema and transaction management complexity (`DeadLetterQueue` table), but ensures payload durability and enables controlled manual API replay.
+
+### 4. Status-Gated RAG Access Control over Un-Gated Vector Indexing
+* **Alternatives Considered:** Indexing all uploaded documents into the vector database upon initial ingestion.
+* **Reasoning:** Restricting vector chunk embeddings strictly to documents holding an `APPROVED` state prevents unverified, malformed, or rejected data from entering LLM context windows or causing hallucinations.
+* **Trade-off Accepted:** Documents flagged for human review (`NEEDS_REVIEW`) are excluded from semantic search queries until explicitly verified by an operator.
+
+### 5. SQLite for Local Development & Verification
+* **Alternatives Considered:** Mandating a multi-container PostgreSQL instance for initial setup.
+* **Reasoning:** SQLite with SQLAlchemy ORM provides a zero-configuration local environment, maximizing developer setup speed and ensuring instantaneous execution of the 39-test suite.
+* **Trade-off Accepted:** SQLite uses file-level locking, which introduces write bottlenecks under concurrent loads; production deployment requires setting `DATABASE_URL` to managed PostgreSQL.
+
+## 🧪 Verified Capabilities & Test Execution Evidence
+
+The platform's core state engine, security boundaries, and integration mechanics are protected by an automated test suite executed via `pytest`. Rather than relying on unbacked synthetic benchmarks, all reported capabilities reflect verified test cases and deterministic backend assertions.
+
+### 1. Automated Test Suite (100% Pass Rate)
+**39 / 39 tests passing (`pytest`)** across critical pipeline components and state boundaries:
+
+* **Ingestion & File Gatekeeping:** Magic Number byte-signature validation intercepts spoofed binary headers and rejects unauthorized or malformed file types prior to disk persistence.
+* **Data Integrity & Schema Parsing:** Strict Pydantic model typing, `decimal.Decimal` monetary precision, and normalization rules are enforced across structured document payloads.
+* **State Machine Integrity:** Deterministic state transitions (`RECEIVED` $\rightarrow$ `PROCESSING` $\rightarrow$ `APPROVED` / `NEEDS_REVIEW`) are strictly governed throughout the document lifecycle.
+* **Fault Tolerance & Integration Retries:** Downstream webhook failure trapping, exponential backoff retries, persistent relational Dead Letter Queue (DLQ) archival, and manual API replay execution (`POST /api/v1/workflows/dlq/{dlq_id}/replay`) are verified.
+* **RAG Access Control Gates:** Vector embedding indexing and context windows are strictly restricted to documents holding an `APPROVED` status, blocking unverified or rejected data from retrieval.
+
+---
+
+### 2. Core Field Extraction & Deterministic Validation
+* **Mathematical Reconciliation:** Exact-match verification on required numeric financial fields (subtotals, tax amounts, line items, and grand totals) enforced via deterministic Python backend validators (`Subtotal + Tax == Total`).
+* **Type-Safe Mapping:** Zero floating-point rounding errors through native `Decimal` data type enforcement during schema parsing and database persistence.
+
+---
+
+### 3. Failure Isolation & Audit Logging
+* **Exception Trapping:** Pipeline and integration exceptions are trapped without application crashes, preserving relational transaction boundaries and preventing dropped background tasks.
+* **Application-Level Audit Trails:** Every status transition, validation failure, reviewer action, and DLQ event appends an immutable record to the `AuditEvent` database table.
 
 ### Known Limitations & Architectural Notes
 * **RAG Generation Benchmarking:** Honest context retrieval returns exact source chunks with page citations from `APPROVED` documents. Automated LLM-as-a-Judge faithfulness scoring is documented as a planned feature rather than a measured production baseline.
@@ -81,7 +102,7 @@ All core platform capabilities, pipelines, and failure modes are validated using
 * `![Audit Trail](docs/audit_trail.png)` — *Immutable audit log showing document state transitions and webhook dispatching.*
 
 ## Demonstration
-[**Watch the Platform Demonstration Video on Loom**](INSERT_LOOM_LINK_HERE)
+[**Watch the Platform Demonstration Video on Loom**]
 
 This 4-minute demonstration walks through the complete operational lifecycle. It begins with the core business problem, followed by a live ingest of a valid document showing seamless state transitions and successful extraction. It then demonstrates a security failure (spoofed MIME type) being cleanly rejected, a low-confidence extraction hitting the human review queue, and a RAG semantic search query. Finally, it shows a successful approval triggering a mock ERP webhook, ending with a view of the immutable audit trail.
 
