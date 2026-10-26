@@ -160,7 +160,7 @@ Classification ambiguity, scanned-document OCR quality, noisy layouts, and real 
 
 ## Demonstration
 
-**Loom link: (https://www.loom.com/share/df987c54d2364e56bcd2b3b50a7f5c74)**
+**Loom link: (https://www.loom.com/share/672aafe0dc6944bea11c7e242f027bf7)**
 
 The planned walkthrough will show the locally running application with a non-sensitive sample document, explain the processing and validation decisions, and identify implemented functions, simulations, and outstanding integration work. A complete upload-to-delivery demonstration requires the blockers in Section 14 to be resolved and retested. This paragraph describes the recording plan, not a video that has already been completed.
 
